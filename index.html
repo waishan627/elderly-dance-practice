@@ -1,0 +1,2133 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>長者健步舞 AI 智能教練</title>
+  <!-- 引入 Tailwind CSS 以建立高對比、響應式及無障礙長者友善介面 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入 FontAwesome 圖示庫輔助視覺提示 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    /* 針對長者視覺優化的自訂樣式 */
+    body {
+      font-family: "PingFang HK", "Microsoft JhengHei", "Heiti TC", sans-serif;
+      background-color: #FEFCE8; /* 柔和暖黃底色，減少刺眼感 */
+      color: #0F172A;
+      overflow-x: hidden;
+    }
+
+    /* 確保所有按鈕具備超大點擊範圍與清晰邊框 */
+    .elderly-btn {
+      min-height: 3.5rem;
+      font-size: 1.25rem;
+      font-weight: 800;
+      border-width: 3px;
+      transition: all 0.15s ease-in-out;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
+    }
+    .elderly-btn:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    }
+    .elderly-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* 相機容器與數碼縮放支援 */
+    .camera-stage {
+      position: relative;
+      width: 100%;
+      background-color: #0F172A;
+      border-radius: 1rem;
+      overflow: hidden;
+      border: 4px solid #1E293B;
+      aspect-ratio: 4 / 3;
+    }
+    @media (max-width: 640px) {
+      .camera-stage {
+        aspect-ratio: 3 / 4;
+      }
+    }
+
+    /* 視訊與畫布同步縮放與鏡像控制 */
+    #ZoomContainer {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transform-origin: center center;
+      transition: transform 0.2s ease-out;
+    }
+    .mirror-mode {
+      transform: scaleX(-1);
+    }
+
+    /* 示範 SVG 動畫效果 */
+    @keyframes pulse-slow {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+    .demo-anim {
+      animation: pulse-slow 2s infinite ease-in-out;
+    }
+
+    /* 自訂大滑桿樣式 */
+    input[type=range].elderly-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 16px;
+      border-radius: 8px;
+      background: #CBD5E1;
+      outline: none;
+      border: 2px solid #475569;
+    }
+    input[type=range].elderly-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #0284C7;
+      border: 3px solid #FFFFFF;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- 頂部導航欄及主要狀態列 -->
+  <header class="bg-teal-900 text-white shadow-lg border-b-4 border-teal-950 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-amber-400 text-slate-950 p-2.5 rounded-xl font-black text-2xl flex items-center justify-center shadow">
+          <i class="fa-solid fa-person-walking"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl md:text-3xl font-black tracking-wide">長者健步舞 AI 智能教練</h1>
+          <p class="text-amber-200 text-sm md:text-base font-bold">
+            <i class="fa-solid fa-shield-halved mr-1"></i>本地 AI 姿態分析・影片絕不上傳或儲存
+          </p>
+        </div>
+      </div>
+
+      <!-- 語音及安全快速按鈕 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnToggleVoice" class="elderly-btn bg-amber-400 hover:bg-amber-300 text-slate-950 border-slate-950 px-4 py-2 rounded-xl text-lg" aria-label="開關廣東話語音">
+          <i id="iconVoice" class="fa-solid fa-volume-high text-xl"></i>
+          <span id="txtVoice">語音：開啟</span>
+        </button>
+        <button id="btnReplayVoice" class="elderly-btn bg-sky-100 hover:bg-white text-slate-900 border-slate-900 px-4 py-2 rounded-xl text-lg" aria-label="重播語音指示">
+          <i class="fa-solid fa-rotate-right text-xl text-sky-800"></i>
+          <span>重播指示</span>
+        </button>
+        <a href="#safetySection" class="elderly-btn bg-rose-700 hover:bg-rose-600 text-white border-white px-4 py-2 rounded-xl text-lg">
+          <i class="fa-solid fa-heart-pulse"></i>
+          <span>安全須知</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區 -->
+  <main class="max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 flex-grow flex flex-col gap-6">
+
+    <!-- 系統環境與權限錯誤橫幅 (預設隱藏) -->
+    <div id="systemAlertBanner" class="hidden bg-red-100 border-4 border-red-700 text-red-950 p-4 rounded-2xl shadow-md" role="alert">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid fa-triangle-exclamation text-3xl text-red-700 mt-1"></i>
+        <div class="flex-1">
+          <h2 id="systemAlertTitle" class="text-xl md:text-2xl font-black mb-1">系統提示</h2>
+          <p id="systemAlertDesc" class="text-lg font-bold leading-relaxed"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 頂部運動主控台 (開始 / 暫停 / 繼續 / 結束 / 重新開始) -->
+    <section aria-label="運動主控台" class="bg-white border-4 border-slate-800 rounded-2xl p-4 shadow-md">
+      <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+        
+        <!-- 主流程控制按鈕群 -->
+        <div class="flex flex-wrap items-center gap-3">
+          <button id="btnStartWorkout" class="elderly-btn bg-emerald-600 hover:bg-emerald-500 text-white border-slate-950 px-6 py-3 rounded-2xl text-xl md:text-2xl flex-1 sm:flex-none">
+            <i class="fa-solid fa-play"></i>
+            <span>開始健步舞</span>
+          </button>
+
+          <button id="btnPauseWorkout" disabled class="elderly-btn bg-amber-500 hover:bg-amber-400 text-slate-950 border-slate-950 px-5 py-3 rounded-2xl text-xl flex-1 sm:flex-none">
+            <i class="fa-solid fa-pause"></i>
+            <span>暫停</span>
+          </button>
+
+          <button id="btnResumeWorkout" disabled class="elderly-btn bg-sky-600 hover:bg-sky-500 text-white border-slate-950 px-5 py-3 rounded-2xl text-xl hidden flex-1 sm:flex-none">
+            <i class="fa-solid fa-play"></i>
+            <span>繼續</span>
+          </button>
+
+          <button id="btnEndWorkout" disabled class="elderly-btn bg-rose-700 hover:bg-rose-600 text-white border-slate-950 px-5 py-3 rounded-2xl text-xl flex-1 sm:flex-none">
+            <i class="fa-solid fa-flag-checkered"></i>
+            <span>結束運動</span>
+          </button>
+
+          <button id="btnRestartAll" class="elderly-btn bg-slate-200 hover:bg-slate-300 text-slate-900 border-slate-800 px-5 py-3 rounded-2xl text-xl flex-1 sm:flex-none">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span>重新開始</span>
+          </button>
+        </div>
+
+        <!-- 總體進度與計時器 -->
+        <div class="flex items-center justify-between sm:justify-end gap-4 bg-slate-100 border-2 border-slate-400 px-4 py-2.5 rounded-xl">
+          <div class="text-left sm:text-right">
+            <div class="text-sm font-bold text-slate-600">總體進度 (共 6 組)</div>
+            <div id="overallProgressText" class="text-xl md:text-2xl font-black text-teal-900">已完成 0 / 6 組</div>
+          </div>
+          <div class="h-10 w-1 bg-slate-300"></div>
+          <div class="text-left sm:text-right">
+            <div class="text-sm font-bold text-slate-600">運動時間</div>
+            <div id="workoutTimerText" class="text-xl md:text-2xl font-black text-slate-900 font-mono">00:00</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 核心雙欄互動區：左側相機與全身取景，右側動作教學與即時回饋 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- 左欄 (7/12)：即時相機畫面、全身取景框、骨架疊加及相機設定 -->
+      <section aria-label="即時相機及姿勢偵測畫面" class="lg:col-span-7 bg-white border-4 border-slate-800 rounded-2xl p-4 shadow-md flex flex-col gap-4">
+        
+        <!-- 相機狀態列與全身檢核橫幅 -->
+        <div id="framingBanner" class="bg-slate-800 text-white px-4 py-3 rounded-xl border-2 border-slate-950 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span id="framingIcon" class="text-2xl text-amber-400"><i class="fa-solid fa-camera"></i></span>
+            <span id="framingStatusText" class="text-xl md:text-2xl font-black tracking-wide">請按上方「開始健步舞」啟動相機</span>
+          </div>
+          <span id="aiModelBadge" class="text-sm font-bold bg-slate-700 text-slate-200 px-3 py-1 rounded-lg whitespace-nowrap">
+            AI 準備中
+          </span>
+        </div>
+
+        <!-- 相機畫布舞台 -->
+        <div class="camera-stage" id="cameraStage">
+          <!-- 縮放包裹層：用於當硬體不支援縮放時進行 CSS 數碼縮放 -->
+          <div id="ZoomContainer" class="mirror-mode">
+            <video id="webcamVideo" class="w-full h-full object-cover" playsinline muted></video>
+            <canvas id="poseCanvas" class="w-full h-full object-cover absolute inset-0 pointer-events-none"></canvas>
+          </div>
+
+          <!-- 全身取景輔助框 (固定於舞台上，不隨數碼縮放變形，方便長者對齊畫面) -->
+          <div id="framingGuideOverlay" class="absolute inset-4 border-4 border-dashed border-amber-400/80 rounded-2xl pointer-events-none flex flex-col justify-between p-3">
+            <div class="flex justify-between items-start">
+              <span class="bg-slate-950/80 text-amber-300 font-bold text-base px-3 py-1 rounded-lg border border-amber-400">
+                <i class="fa-solid fa-user-check mr-1"></i>全身取景框（請確保頭、手、腳在框內）
+              </span>
+              <span id="zoomModeBadge" class="bg-slate-950/80 text-sky-300 font-bold text-sm px-2.5 py-1 rounded-lg border border-sky-400">
+                縮放：1.0x
+              </span>
+            </div>
+            <div class="text-center my-auto" id="cameraIdlePlaceholder">
+              <div class="bg-slate-950/90 text-white p-6 rounded-2xl max-w-md mx-auto border-2 border-slate-600 shadow-xl">
+                <i class="fa-solid fa-video text-5xl text-amber-400 mb-3"></i>
+                <p class="text-2xl font-black mb-2">相機尚未開啟</p>
+                <p class="text-lg text-slate-200 font-bold">按下「開始健步舞」後，瀏覽器會詢問相機權限，請選擇「允許」。</p>
+              </div>
+            </div>
+            <div class="flex justify-center">
+              <span class="bg-slate-950/80 text-white font-bold text-sm px-3 py-1 rounded-lg">
+                請保持距離鏡頭約 1.5 至 2.5 米
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 相機控制工具列：前後鏡切換、關閉相機、縮放控制 -->
+        <div class="bg-slate-100 border-2 border-slate-400 rounded-xl p-4 flex flex-col gap-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="btnSwitchCamera" disabled class="elderly-btn bg-white hover:bg-slate-50 text-slate-900 border-slate-800 px-4 py-2 rounded-xl text-lg">
+                <i class="fa-solid fa-camera-rotate text-sky-700"></i>
+                <span>切換前/後鏡頭</span>
+              </button>
+              <button id="btnCloseCamera" disabled class="elderly-btn bg-slate-800 hover:bg-slate-700 text-white border-slate-950 px-4 py-2 rounded-xl text-lg">
+                <i class="fa-solid fa-video-slash text-rose-400"></i>
+                <span>關閉相機</span>
+              </button>
+            </div>
+            <div id="cameraFacingText" class="text-base font-black text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-400">
+              鏡頭：前置（鏡像）
+            </div>
+          </div>
+
+          <!-- 縮放控制面板 (0.25x, 0.5x, 1.0x, 1.5x, 2.0x 及滑桿) -->
+          <div class="border-t-2 border-slate-300 pt-3 flex flex-col gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label for="zoomSlider" class="text-lg font-black text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass-plus text-teal-800"></i>
+                <span>畫面縮放控制：</span>
+                <span id="zoomValueDisplay" class="text-teal-800 underline">1.0 倍</span>
+              </label>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" data-zoom="0.25" class="zoom-preset-btn elderly-btn bg-white text-slate-900 border-slate-800 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                  0.25 倍
+                </button>
+                <button type="button" data-zoom="0.5" class="zoom-preset-btn elderly-btn bg-white text-slate-900 border-slate-800 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                  0.5 倍
+                </button>
+                <button type="button" data-zoom="1.0" class="zoom-preset-btn elderly-btn bg-teal-800 text-white border-slate-950 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                  1.0 倍
+                </button>
+                <button type="button" data-zoom="1.5" class="zoom-preset-btn elderly-btn bg-white text-slate-900 border-slate-800 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                  1.5 倍
+                </button>
+                <button type="button" data-zoom="2.0" class="zoom-preset-btn elderly-btn bg-white text-slate-900 border-slate-800 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                  2.0 倍
+                </button>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4 px-1 py-1">
+              <span class="text-base font-black text-slate-700">0.25x</span>
+              <input id="zoomSlider" type="range" min="0.25" max="2.0" step="0.05" value="1.0" class="elderly-slider" aria-label="相機縮放滑桿">
+              <span class="text-base font-black text-slate-700">2.0x</span>
+            </div>
+
+            <p id="zoomCapabilityNote" class="text-sm md:text-base font-bold text-slate-700 bg-amber-50 border border-amber-400 px-3 py-1.5 rounded-lg">
+              <i class="fa-solid fa-circle-info text-amber-700 mr-1"></i>
+              <span>提示：系統支援 0.25 倍及 0.5 倍數碼縮小，以及 1.0 至 2.0 倍放大。數碼放大可能裁切畫面邊緣；數碼縮小則方便在較窄空間觀察全身骨架。</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- AI 準確度與私隱聲明卡 -->
+        <div class="bg-sky-50 border-2 border-sky-700 rounded-xl p-3.5 text-slate-900 flex items-start gap-3">
+          <i class="fa-solid fa-user-shield text-2xl text-sky-800 mt-1"></i>
+          <div class="text-base font-bold leading-snug">
+            <p class="font-black text-sky-950 mb-0.5">AI 姿態估算與個人私隱說明：</p>
+            <p>本網頁使用 MediaPipe 技術於您的瀏覽器本地即時分析身體關節，<strong>絕不會上傳、錄影或儲存您的影像及人臉資料</strong>。單一鏡頭 AI 只能根據平面的關節位置估算動作（特別是前後踏步及腳跟點地），不能保證 100% 準確，亦不可作為醫療診斷。</p>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 右欄 (5/12)：康文署六組健步舞教學、即時教練回饋、進度與手動輔助 -->
+      <section aria-label="健步舞動作教學與進度" class="lg:col-span-5 flex flex-col gap-4">
+
+        <!-- 動作切換及目前組別卡片 -->
+        <div class="bg-white border-4 border-slate-800 rounded-2xl p-4 shadow-md flex flex-col gap-4">
+          
+          <!-- 組別標籤與上下組切換按鈕 -->
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-200 pb-3">
+            <span id="exerciseStepBadge" class="bg-teal-900 text-amber-300 font-black text-lg md:text-xl px-4 py-1.5 rounded-xl border-2 border-slate-950">
+              第一組（共 6 組）
+            </span>
+            <div class="flex items-center gap-2">
+              <button id="btnPrevExercise" class="elderly-btn bg-slate-200 hover:bg-slate-300 text-slate-900 border-slate-800 px-3.5 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>上一個</span>
+              </button>
+              <button id="btnNextExercise" class="elderly-btn bg-teal-700 hover:bg-teal-600 text-white border-slate-950 px-3.5 py-1.5 rounded-xl text-base min-h-[2.75rem]">
+                <span>下一個</span>
+                <i class="fa-solid fa-arrow-right"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- 動作名稱及階段說明 -->
+          <div>
+            <h2 id="exerciseTitle" class="text-2xl md:text-3xl font-black text-slate-950 mb-2">
+              動作一：原地及向前踏步
+            </h2>
+            <p id="exerciseDescription" class="text-xl font-bold text-slate-800 bg-amber-100 border-l-8 border-amber-500 p-3 rounded-r-xl leading-relaxed">
+              原地踏步 4 次，然後向前踏步 4 次；向前踏步時雙手向前推。
+            </p>
+          </div>
+
+          <!-- 視覺化動態示範區域 (SVG 清晰圖示 + 子階段高亮) -->
+          <div class="bg-slate-900 text-white rounded-2xl p-4 border-2 border-slate-950 flex flex-col sm:flex-row items-center gap-4">
+            <div id="exerciseSvgContainer" class="w-32 h-32 sm:w-36 sm:h-36 bg-slate-800 rounded-xl border-2 border-amber-400 flex items-center justify-center shrink-0 p-2">
+              <!-- 由 JS 動態注入清晰高對比 SVG 動作示範圖 -->
+            </div>
+            <div class="flex-1 text-center sm:text-left">
+              <div class="text-amber-300 text-base font-extrabold mb-1">
+                <i class="fa-solid fa-bullseye mr-1"></i>目前小階段目標：
+              </div>
+              <div id="subStagePrompt" class="text-2xl font-black text-white mb-2">
+                第 1 步：原地踏步 (0 / 4 次)
+              </div>
+              <div id="subStageHint" class="text-base font-bold text-sky-200">
+                左右腳交替抬起踏步，保持自然呼吸
+              </div>
+            </div>
+          </div>
+
+          <!-- 即時 AI 教練反饋橫幅 (高對比大字 + 圖示) -->
+          <div id="coachFeedbackBox" class="bg-emerald-50 border-4 border-emerald-700 text-emerald-950 p-4 rounded-2xl shadow-sm transition-colors duration-200" role="status" aria-live="polite">
+            <div class="flex items-start gap-3">
+              <div id="coachFeedbackIcon" class="text-3xl text-emerald-700 mt-0.5">
+                <i class="fa-solid fa-comment-dots"></i>
+              </div>
+              <div class="flex-1">
+                <div class="text-sm font-black uppercase tracking-wider text-emerald-800 mb-0.5">AI 教練即時提示：</div>
+                <p id="coachFeedbackText" class="text-2xl font-black leading-snug">
+                  請按「開始健步舞」，並站在取景框內。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 次數計算與進度條 -->
+          <div class="bg-slate-100 border-2 border-slate-400 rounded-2xl p-4">
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-xl font-black text-slate-900">本組完成次數：</span>
+              <div>
+                <span id="currentRepCount" class="text-4xl md:text-5xl font-black text-teal-800">0</span>
+                <span class="text-2xl font-black text-slate-700"> / </span>
+                <span id="targetRepCount" class="text-3xl font-black text-slate-800">8</span>
+                <span class="text-xl font-bold text-slate-700"> 次</span>
+              </div>
+            </div>
+
+            <!-- 進度條 -->
+            <div class="w-full h-7 bg-slate-300 rounded-full overflow-hidden border-2 border-slate-700 p-0.5 mb-3">
+              <div id="exerciseProgressBar" class="h-full bg-teal-600 rounded-full transition-all duration-300" style="width: 0%;"></div>
+            </div>
+
+            <!-- 單組操作與手動輔助計數 (針對單鏡頭前後/腳跟限制提供無障礙支援) -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-300">
+              <button id="btnResetCurrentExercise" class="elderly-btn bg-white hover:bg-slate-100 text-slate-900 border-slate-800 px-4 py-2 rounded-xl text-base min-h-[3rem]">
+                <i class="fa-solid fa-rotate-left text-amber-700"></i>
+                <span>重新練習本組</span>
+              </button>
+
+              <button id="btnManualAddRep" class="elderly-btn bg-amber-300 hover:bg-amber-200 text-slate-950 border-slate-950 px-4 py-2 rounded-xl text-base min-h-[3rem]" title="當單一鏡頭因角度未能感應時，可按此手動加一次">
+                <i class="fa-solid fa-hand-pointer"></i>
+                <span>手動確認 +1 次</span>
+              </button>
+            </div>
+            <p id="singleCameraLimitationNote" class="text-sm font-bold text-slate-600 mt-2">
+              * 由於單一鏡頭對「前後踏步深度」及「腳跟觸地角度」較易受光線及拍攝角度影響，若您已完成動作但鏡頭未感應，可按「手動確認 +1 次」。
+            </p>
+          </div>
+
+          <!-- 正確姿勢提示、常見錯誤及改善方法 -->
+          <div class="grid grid-cols-1 gap-3">
+            <div class="bg-teal-50 border-2 border-teal-700 rounded-xl p-3.5">
+              <h3 class="text-lg font-black text-teal-950 flex items-center gap-2 mb-1">
+                <i class="fa-solid fa-circle-check text-teal-700"></i>
+                <span>正確姿勢要點</span>
+              </h3>
+              <p id="correctPostureTip" class="text-lg font-bold text-slate-800 leading-relaxed"></p>
+            </div>
+
+            <div class="bg-rose-50 border-2 border-rose-700 rounded-xl p-3.5">
+              <h3 class="text-lg font-black text-rose-950 flex items-center gap-2 mb-1">
+                <i class="fa-solid fa-circle-exclamation text-rose-700"></i>
+                <span>常見錯誤及改善方法</span>
+              </h3>
+              <p id="commonMistakeTip" class="text-lg font-bold text-slate-800 leading-relaxed"></p>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+    </div>
+
+    <!-- 六組動作快速預覽及進度總覽列 -->
+    <section aria-label="六組健步舞動作一覽" class="bg-white border-4 border-slate-800 rounded-2xl p-4 shadow-md">
+      <h2 class="text-xl md:text-2xl font-black text-slate-900 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-list-check text-teal-800"></i>
+        <span>康文署「長者健步舞」六組動作進度一覽（可點選切換）</span>
+      </h2>
+      <div id="exerciseQuickNavGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <!-- 由 JS 動態生成 6 張動作進度卡片 -->
+      </div>
+    </section>
+
+    <!-- 運動完成摘要區塊 (完成全部或按「結束運動」時顯示) -->
+    <section id="workoutSummarySection" aria-label="運動完成摘要" class="hidden bg-amber-100 border-4 border-teal-900 rounded-3xl p-6 shadow-xl">
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b-4 border-teal-800 pb-4 mb-5">
+        <div class="flex items-center gap-4">
+          <div class="bg-amber-400 text-slate-950 p-4 rounded-2xl text-4xl border-2 border-slate-950 shadow">
+            <i class="fa-solid fa-trophy"></i>
+          </div>
+          <div>
+            <h2 class="text-3xl font-black text-teal-950">長者健步舞・運動成績表</h2>
+            <p id="summarySubtitle" class="text-xl font-bold text-slate-800">做得好！今日已經活動咗身體，減少久坐！</p>
+          </div>
+        </div>
+        <div class="bg-white border-2 border-slate-800 px-5 py-3 rounded-2xl text-center">
+          <div class="text-base font-bold text-slate-600">總運動時間</div>
+          <div id="summaryTotalTime" class="text-3xl font-black text-teal-900 font-mono">00:00</div>
+        </div>
+      </div>
+
+      <!-- 六組完成詳情表格 -->
+      <div id="summaryDetailsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <!-- 由 JS 動態插入各組完成次數 -->
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-4">
+        <button id="btnSummaryPracticeAgain" class="elderly-btn bg-teal-800 hover:bg-teal-700 text-white border-slate-950 px-6 py-3 rounded-2xl text-2xl">
+          <i class="fa-solid fa-rotate"></i>
+          <span>重新練習全部六組</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 康文署健康建議及運動安全區域 -->
+    <section id="safetySection" aria-label="運動安全及康文署健康建議" class="bg-white border-4 border-slate-800 rounded-2xl p-5 shadow-md">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-slate-300 pb-4 mb-4">
+        <div class="flex items-center gap-3">
+          <i class="fa-solid fa-notes-medical text-3xl text-rose-700"></i>
+          <h2 class="text-2xl md:text-3xl font-black text-slate-950">運動安全及康文署健康建議</h2>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <a href="https://www.lcsd.gov.hk/tc/healthy/fitness/elderly2.html" target="_blank" rel="noopener noreferrer" class="elderly-btn bg-teal-800 hover:bg-teal-700 text-white border-slate-950 px-4 py-2 rounded-xl text-base min-h-[3rem]">
+            <i class="fa-solid fa-up-right-from-square"></i>
+            <span>康文署長者健體計劃</span>
+          </a>
+          <a href="https://www.lcsd.gov.hk/tc/healthy/fitness/elderly2.html#4" target="_blank" rel="noopener noreferrer" class="elderly-btn bg-amber-400 hover:bg-amber-300 text-slate-950 border-slate-950 px-4 py-2 rounded-xl text-base min-h-[3rem]">
+            <i class="fa-solid fa-person-dancing"></i>
+            <span>官方長者健步舞示範</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-lg font-bold text-slate-900">
+        <div class="bg-amber-50 border-2 border-amber-500 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-couch text-2xl text-amber-700 mt-1"></i>
+          <div>
+            <p class="font-black text-slate-950 mb-1">1. 清理周圍障礙物</p>
+            <p class="text-base">運動前請確保四周有足夠空間，移開地毯、電線、矮凳或雜物，地面保持乾爽防滑。</p>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border-2 border-amber-500 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-shoe-prints text-2xl text-amber-700 mt-1"></i>
+          <div>
+            <p class="font-black text-slate-950 mb-1">2. 穿著合適衣物及運動鞋</p>
+            <p class="text-base">請穿著鬆身透氣衣服及防滑包趾運動鞋，切勿穿拖鞋或只穿襪子在光滑地面踏步。</p>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border-2 border-amber-500 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-gauge-high text-2xl text-amber-700 mt-1"></i>
+          <div>
+            <p class="font-black text-slate-950 mb-1">3. 按個人能力循序漸進</p>
+            <p class="text-base">動作幅度及速度應量力而為，保持自然呼吸，切勿閉氣或勉強做出大幅度動作。</p>
+          </div>
+        </div>
+
+        <div class="bg-amber-50 border-2 border-amber-500 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-person-rays text-2xl text-amber-700 mt-1"></i>
+          <div>
+            <p class="font-black text-slate-950 mb-1">4. 運動前後熱身及緩和</p>
+            <p class="text-base">開始健步舞前應先作簡單關節熱身；完成後進行深呼吸及伸展緩和活動。</p>
+          </div>
+        </div>
+
+        <div class="bg-rose-50 border-2 border-rose-600 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-bell-concierge text-2xl text-rose-700 mt-1"></i>
+          <div>
+            <p class="font-black text-rose-950 mb-1">5. 不適應立即停止運動</p>
+            <p class="text-base text-rose-950">如感到頭暈、胸口翳悶、心悸、關節劇痛或呼吸困難，應立即停止運動，並按需要尋求醫療協助。</p>
+          </div>
+        </div>
+
+        <div class="bg-sky-50 border-2 border-sky-600 p-4 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-user-doctor text-2xl text-sky-800 mt-1"></i>
+          <div>
+            <p class="font-black text-sky-950 mb-1">6. 醫療免責及專業諮詢</p>
+            <p class="text-base text-sky-950">如有長期病患或健康疑慮，運動前應先諮詢醫生。本網頁之 AI 姿勢辨識僅供活動參考，絕不可當作醫療診斷或物理治療意見。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 頁尾資訊 -->
+  <footer class="bg-slate-900 text-slate-200 border-t-4 border-slate-950 py-4 px-4 mt-6">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-base font-bold">
+      <div>樂齡科技發明專題：長者健步舞 AI 智能教練</div>
+      <div>動作資料參考：香港特別行政區政府 康樂及文化事務署（康文署）</div>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       核心 JavaScript 模組：MediaPipe Pose Landmarker、相機控制、六組動作狀態機、廣東話語音
+       ========================================================================= -->
+  <script type="module">
+    // 從官方 CDN 引入 MediaPipe Tasks Vision 套件
+    import {
+      PoseLandmarker,
+      FilesetResolver,
+      DrawingUtils
+    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+    /* -------------------------------------------------------------------------
+     * 1. 康文署「長者健步舞」六組官方動作定義與資料結構
+     * 參考網址：https://www.lcsd.gov.hk/tc/healthy/fitness/elderly2.html#4
+     * ------------------------------------------------------------------------- */
+    const EXERCISES = [
+      {
+        id: 1,
+        name: "動作一：原地及向前踏步",
+        description: "原地踏步 4 次，然後向前踏步 4 次；向前踏步時雙手向前推。",
+        targetReps: 8,
+        correctTip: "挺胸收腹，雙眼望前。前4次在原地左右踏步；後4次踏步時，雙手由胸前溫和向前推出。",
+        mistakeTip: "常見錯誤：向前踏步時身體過度前傾或忘記推手。改善：步幅不用太大，手肘微曲向前推便可。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="60" cy="24" r="11" fill="#FBBF24"/>
+            <line x1="60" y1="36" x2="60" y2="72" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="45" x2="92" y2="45" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <polygon points="102,45 90,38 90,52" fill="#38BDF8"/>
+            <line x1="60" y1="72" x2="44" y2="106" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="72" x2="78" y2="96" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+          </svg>
+        `
+      },
+      {
+        id: 2,
+        name: "動作二：原地及向後踏步",
+        description: "原地踏步 4 次，然後向後踏步 4 次；向後踏步時雙臂屈曲，並在胸前打圈。",
+        targetReps: 8,
+        correctTip: "前4次原地穩定踏步；後4次向後踏小步時，雙手手肘屈曲在胸前自然打圈轉動。",
+        mistakeTip: "常見錯誤：向後踏步過大導致重心不穩。改善：向後踏半步即可，雙手保持在胸前高度持續轉動。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="60" cy="24" r="11" fill="#FBBF24"/>
+            <line x1="60" y1="36" x2="60" y2="72" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <circle cx="60" cy="52" r="14" fill="none" stroke="#38BDF8" stroke-width="5" stroke-dasharray="6 4"/>
+            <line x1="60" y1="72" x2="45" y2="105" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="72" x2="75" y2="105" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+          </svg>
+        `
+      },
+      {
+        id: 3,
+        name: "動作三：左右腳跟點地",
+        description: "先以右腳腳跟向前點地，再收回；接著以左腳腳跟向前點地，再收回。腳跟向前點地時，雙臂在腰部高度屈曲並向上提，共 4 次。",
+        targetReps: 4,
+        correctTip: "左右腳交替向前伸出以腳跟輕點地面；點地同時雙手手肘屈曲向上彎舉（像舉小啞鈴）。",
+        mistakeTip: "常見錯誤：支撐腳鎖死或憋氣。改善：支撐腳膝蓋微曲保持彈性，手腳配合節奏一伸一收。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="56" cy="24" r="11" fill="#FBBF24"/>
+            <line x1="56" y1="36" x2="56" y2="72" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <polyline points="56,44 40,56 46,36" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="56,44 72,56 66,36" fill="none" stroke="#38BDF8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="56" y1="72" x2="46" y2="106" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="56" y1="72" x2="86" y2="104" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+            <circle cx="90" cy="104" r="5" fill="#38BDF8"/>
+          </svg>
+        `
+      },
+      {
+        id: 4,
+        name: "動作四：左右踏步及開合手臂",
+        description: "向右踏步 4 次，再向左踏步 4 次；踏步時，雙臂先在胸前屈曲，再向兩旁張開。",
+        targetReps: 8,
+        correctTip: "向側踏步時，雙臂在胸前合攏後向左右兩旁橫向打開，擴展胸部，共做 8 次（右 4 次、左 4 次）。",
+        mistakeTip: "常見錯誤：聳肩或手臂張開位置過高。改善：沉肩放鬆，手臂在胸口至肩膊高度平開平合。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="60" cy="24" r="11" fill="#FBBF24"/>
+            <line x1="60" y1="36" x2="60" y2="72" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="20" y1="48" x2="100" y2="48" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <polygon points="14,48 24,42 24,54" fill="#38BDF8"/>
+            <polygon points="106,48 96,42 96,54" fill="#38BDF8"/>
+            <line x1="60" y1="72" x2="40" y2="106" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="72" x2="80" y2="106" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+          </svg>
+        `
+      },
+      {
+        id: 5,
+        name: "動作五：前後踏步及向上推手",
+        description: "向前踏步 4 次，再向後踏步 4 次；踏步時雙手由肩膊位置向上推。",
+        targetReps: 8,
+        correctTip: "踏步同時，雙手由肩膊高度穩定向頭頂上方推舉，然後回到肩膊位置，共 8 次。",
+        mistakeTip: "常見錯誤：向上推手時腰部過度後拗。改善：保持腹部微收，雙手在視線前上方推出即可。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="60" cy="30" r="11" fill="#FBBF24"/>
+            <line x1="60" y1="42" x2="60" y2="76" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="48" y1="46" x2="38" y2="14" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <line x1="72" y1="46" x2="82" y2="14" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="76" x2="45" y2="108" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="76" x2="75" y2="108" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+          </svg>
+        `
+      },
+      {
+        id: 6,
+        name: "動作六：左右踏步及側平舉",
+        description: "向右踏步 4 次，再向左踏步 4 次；雙手由身體兩側慢慢張開至肩膊水平。",
+        targetReps: 8,
+        correctTip: "左右踏步時，雙手由大腿兩側慢慢向左右平舉至肩膊水平，再慢慢放下。",
+        mistakeTip: "常見錯誤：手腕高過肩膊太多或用力過猛。改善：手肘微曲，雙手升至與肩膊平行即可慢慢放下。",
+        svgMarkup: `
+          <svg viewBox="0 0 120 120" class="w-full h-full demo-anim">
+            <circle cx="60" cy="24" r="11" fill="#FBBF24"/>
+            <line x1="60" y1="36" x2="60" y2="72" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 60 44 L 22 44" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 60 44 L 98 44" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+            <path d="M 28 66 Q 22 55 26 46" fill="none" stroke="#FBBF24" stroke-width="3" stroke-dasharray="3 3"/>
+            <path d="M 92 66 Q 98 55 94 46" fill="none" stroke="#FBBF24" stroke-width="3" stroke-dasharray="3 3"/>
+            <line x1="60" y1="72" x2="42" y2="106" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+            <line x1="60" y1="72" x2="78" y2="106" stroke="#FBBF24" stroke-width="6" stroke-linecap="round"/>
+          </svg>
+        `
+      }
+    ];
+
+    /* -------------------------------------------------------------------------
+     * 2. 應用程式狀態與全域變數
+     * ------------------------------------------------------------------------- */
+    const state = {
+      // MediaPipe 實例與載入狀態
+      poseLandmarker: null,
+      isModelLoading: false,
+      isModelReady: false,
+
+      // 相機與串流狀態
+      mediaStream: null,
+      isCameraActive: false,
+      facingMode: "user", // "user" (前置) 或 "environment" (後置)
+      currentZoom: 1.0,
+      supportsHardwareZoom: false,
+
+      // 運動流程狀態
+      isWorkoutRunning: false,
+      isPaused: false,
+      currentExerciseIndex: 0, // 0 ~ 5
+      completedRepsPerExercise: [0, 0, 0, 0, 0, 0],
+      elapsedSeconds: 0,
+      timerInterval: null,
+
+      // 語音設定
+      voiceEnabled: true,
+      cantoneseVoice: null,
+      lastSpokenText: "",
+      lastSpokenTime: 0,
+
+      // 平滑濾波與人體關節歷史記錄 (EMA 時間平滑處理，減少抖動及重複計數)
+      smoothedLandmarks: null,
+      smoothingAlpha: 0.45, // 0.45 兼顧反應速度與抗抖動
+      isFullBodyVisible: false,
+      lastFrameTime: -1,
+
+      // 動作狀態機 (每個動作獨立管理開始、進行、完成及返回起始位置)
+      detectorState: {
+        phase: "IDLE",           // "IDLE" | "ACTIVE"
+        lastRepTimestamp: 0,     // 防止短時間重複計數的冷卻時間戳
+        activeSide: null,        // 記錄左或右腳/手觸發
+        hipCenterHistory: [],    // 記錄髖部中心 X/Y/Scale 變化以分析前後及左右踏步
+        baselineTorsoSize: null, // 基準軀幹長度（用於估算前後踏步距離變化）
+        baselineHipX: null,      // 基準髖部水平位置（用於估算左右踏步移動）
+        armCircleEnergy: 0,      // 動作二：胸前打圈累積動能
+        partialPeakValue: 0,     // 記錄未達標但有嘗試的動作幅度，用於精準給予錯誤改善提示
+        lastHintTimestamp: 0
+      }
+    };
+
+    /* -------------------------------------------------------------------------
+     * 3. DOM 元素參照
+     * ------------------------------------------------------------------------- */
+    const dom = {
+      systemAlertBanner: document.getElementById("systemAlertBanner"),
+      systemAlertTitle: document.getElementById("systemAlertTitle"),
+      systemAlertDesc: document.getElementById("systemAlertDesc"),
+
+      btnToggleVoice: document.getElementById("btnToggleVoice"),
+      iconVoice: document.getElementById("iconVoice"),
+      txtVoice: document.getElementById("txtVoice"),
+      btnReplayVoice: document.getElementById("btnReplayVoice"),
+
+      btnStartWorkout: document.getElementById("btnStartWorkout"),
+      btnPauseWorkout: document.getElementById("btnPauseWorkout"),
+      btnResumeWorkout: document.getElementById("btnResumeWorkout"),
+      btnEndWorkout: document.getElementById("btnEndWorkout"),
+      btnRestartAll: document.getElementById("btnRestartAll"),
+
+      overallProgressText: document.getElementById("overallProgressText"),
+      workoutTimerText: document.getElementById("workoutTimerText"),
+
+      framingBanner: document.getElementById("framingBanner"),
+      framingIcon: document.getElementById("framingIcon"),
+      framingStatusText: document.getElementById("framingStatusText"),
+      aiModelBadge: document.getElementById("aiModelBadge"),
+
+      zoomContainer: document.getElementById("ZoomContainer"),
+      webcamVideo: document.getElementById("webcamVideo"),
+      poseCanvas: document.getElementById("poseCanvas"),
+      framingGuideOverlay: document.getElementById("framingGuideOverlay"),
+      cameraIdlePlaceholder: document.getElementById("cameraIdlePlaceholder"),
+      zoomModeBadge: document.getElementById("zoomModeBadge"),
+
+      btnSwitchCamera: document.getElementById("btnSwitchCamera"),
+      btnCloseCamera: document.getElementById("btnCloseCamera"),
+      cameraFacingText: document.getElementById("cameraFacingText"),
+      zoomSlider: document.getElementById("zoomSlider"),
+      zoomValueDisplay: document.getElementById("zoomValueDisplay"),
+      zoomCapabilityNote: document.getElementById("zoomCapabilityNote"),
+      zoomPresetBtns: document.querySelectorAll(".zoom-preset-btn"),
+
+      exerciseStepBadge: document.getElementById("exerciseStepBadge"),
+      btnPrevExercise: document.getElementById("btnPrevExercise"),
+      btnNextExercise: document.getElementById("btnNextExercise"),
+      exerciseTitle: document.getElementById("exerciseTitle"),
+      exerciseDescription: document.getElementById("exerciseDescription"),
+      exerciseSvgContainer: document.getElementById("exerciseSvgContainer"),
+      subStagePrompt: document.getElementById("subStagePrompt"),
+      subStageHint: document.getElementById("subStageHint"),
+
+      coachFeedbackBox: document.getElementById("coachFeedbackBox"),
+      coachFeedbackIcon: document.getElementById("coachFeedbackIcon"),
+      coachFeedbackText: document.getElementById("coachFeedbackText"),
+
+      currentRepCount: document.getElementById("currentRepCount"),
+      targetRepCount: document.getElementById("targetRepCount"),
+      exerciseProgressBar: document.getElementById("exerciseProgressBar"),
+      btnResetCurrentExercise: document.getElementById("btnResetCurrentExercise"),
+      btnManualAddRep: document.getElementById("btnManualAddRep"),
+
+      correctPostureTip: document.getElementById("correctPostureTip"),
+      commonMistakeTip: document.getElementById("commonMistakeTip"),
+      exerciseQuickNavGrid: document.getElementById("exerciseQuickNavGrid"),
+
+      workoutSummarySection: document.getElementById("workoutSummarySection"),
+      summarySubtitle: document.getElementById("summarySubtitle"),
+      summaryTotalTime: document.getElementById("summaryTotalTime"),
+      summaryDetailsGrid: document.getElementById("summaryDetailsGrid"),
+      btnSummaryPracticeAgain: document.getElementById("btnSummaryPracticeAgain")
+    };
+
+    const canvasCtx = dom.poseCanvas.getContext("2d");
+
+    /* -------------------------------------------------------------------------
+     * 4. 廣東話語音合成系統 (Web Speech API)
+     * 優先選用 zh-HK / yue-HK 廣東話語音，若無則降級至 zh-TW / zh-CN 並保留清晰文字提示
+     * ------------------------------------------------------------------------- */
+    function initSpeechSynthesis() {
+      if (!("speechSynthesis" in window)) {
+        return;
+      }
+
+      const selectCantoneseVoice = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices || voices.length === 0) return;
+
+        // 1. 優先尋找香港廣東話標籤 (zh-HK, yue-HK, yue) 或名稱含 Hong Kong / Cantonese / 粵語
+        let preferred = voices.find(v =>
+          /zh-HK|yue-HK|yue/i.test(v.lang) ||
+          /Hong Kong|Cantonese|粵語|廣東話/i.test(v.name)
+        );
+        // 2. 次選繁體中文或中文語音
+        if (!preferred) {
+          preferred = voices.find(v => /zh-TW|zh-MO|zh/i.test(v.lang));
+        }
+        state.cantoneseVoice = preferred || null;
+      };
+
+      selectCantoneseVoice();
+      window.speechSynthesis.onvoiceschanged = selectCantoneseVoice;
+    }
+
+    /**
+     * 播放廣東話語音提示
+     * @param {string} text 欲朗讀之繁體中文句子
+     * @param {boolean} forceInterrupt 是否立即中斷上一段語音
+     */
+    function speakInstruction(text, forceInterrupt = false) {
+      if (!text) return;
+      state.lastSpokenText = text;
+
+      if (!state.voiceEnabled || !("speechSynthesis" in window)) {
+        return;
+      }
+
+      const now = performance.now();
+      // 避免非強制語音在極短時間內重複朗讀洗版
+      if (!forceInterrupt && now - state.lastSpokenTime < 2200) {
+        return;
+      }
+
+      try {
+        if (forceInterrupt) {
+          window.speechSynthesis.cancel();
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (state.cantoneseVoice) {
+          utterance.voice = state.cantoneseVoice;
+          utterance.lang = state.cantoneseVoice.lang;
+        } else {
+          utterance.lang = "zh-HK";
+        }
+        utterance.rate = 0.92; // 稍慢語速，方便長者聆聽
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        window.speechSynthesis.speak(utterance);
+        state.lastSpokenTime = now;
+      } catch (err) {
+        console.warn("語音播放失敗，已保留清晰文字提示：", err);
+      }
+    }
+
+    /* -------------------------------------------------------------------------
+     * 5. 視覺與系統提示輔助函數
+     * ------------------------------------------------------------------------- */
+    function showSystemAlert(title, desc) {
+      dom.systemAlertTitle.textContent = title;
+      dom.systemAlertDesc.textContent = desc;
+      dom.systemAlertBanner.classList.remove("hidden");
+    }
+
+    function hideSystemAlert() {
+      dom.systemAlertBanner.classList.add("hidden");
+    }
+
+    /**
+     * 更新 AI 教練即時文字與視覺橫幅，並可選擇同步朗讀
+     * @param {string} message 提示文字
+     * @param {"good"|"warn"|"info"} type 視覺狀態類型
+     * @param {boolean} speak 是否同時語音朗讀
+     */
+    function updateCoachFeedback(message, type = "info", speak = false) {
+      dom.coachFeedbackText.textContent = message;
+
+      if (type === "good") {
+        dom.coachFeedbackBox.className = "bg-emerald-50 border-4 border-emerald-700 text-emerald-950 p-4 rounded-2xl shadow-sm transition-colors duration-200";
+        dom.coachFeedbackIcon.className = "text-3xl text-emerald-700 mt-0.5";
+        dom.coachFeedbackIcon.innerHTML = '<i class="fa-solid fa-face-smile-beam"></i>';
+      } else if (type === "warn") {
+        dom.coachFeedbackBox.className = "bg-amber-50 border-4 border-amber-600 text-amber-950 p-4 rounded-2xl shadow-sm transition-colors duration-200";
+        dom.coachFeedbackIcon.className = "text-3xl text-amber-700 mt-0.5";
+        dom.coachFeedbackIcon.innerHTML = '<i class="fa-solid fa-hand-point-up"></i>';
+      } else {
+        dom.coachFeedbackBox.className = "bg-sky-50 border-4 border-sky-700 text-sky-950 p-4 rounded-2xl shadow-sm transition-colors duration-200";
+        dom.coachFeedbackIcon.className = "text-3xl text-sky-700 mt-0.5";
+        dom.coachFeedbackIcon.innerHTML = '<i class="fa-solid fa-comment-dots"></i>';
+      }
+
+      if (speak) {
+        speakInstruction(message, false);
+      }
+    }
+
+    /* -------------------------------------------------------------------------
+     * 6. MediaPipe Pose Landmarker 初始化
+     * ------------------------------------------------------------------------- */
+    async function initMediaPipePose() {
+      if (state.isModelReady && state.poseLandmarker) {
+        return true;
+      }
+      if (state.isModelLoading) {
+        return false;
+      }
+
+      state.isModelLoading = true;
+      dom.aiModelBadge.textContent = "正在載入 AI 模型...";
+      dom.aiModelBadge.className = "text-sm font-bold bg-amber-500 text-slate-950 px-3 py-1 rounded-lg whitespace-nowrap";
+
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+        );
+
+        state.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numPoses: 1,
+          minPoseDetectionConfidence: 0.55,
+          minPosePresenceConfidence: 0.55,
+          minTrackingConfidence: 0.55
+        });
+
+        state.isModelReady = true;
+        state.isModelLoading = false;
+        dom.aiModelBadge.textContent = "AI 姿態模型已就緒";
+        dom.aiModelBadge.className = "text-sm font-bold bg-emerald-500 text-slate-950 px-3 py-1 rounded-lg whitespace-nowrap";
+        return true;
+      } catch (err) {
+        console.error("MediaPipe 載入失敗，嘗試 CPU 備援模式：", err);
+        try {
+          const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+          );
+          state.poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+              delegate: "CPU"
+            },
+            runningMode: "VIDEO",
+            numPoses: 1
+          });
+          state.isModelReady = true;
+          state.isModelLoading = false;
+          dom.aiModelBadge.textContent = "AI 模型已就緒 (CPU)";
+          dom.aiModelBadge.className = "text-sm font-bold bg-emerald-500 text-slate-950 px-3 py-1 rounded-lg whitespace-nowrap";
+          return true;
+        } catch (fallbackErr) {
+          state.isModelLoading = false;
+          dom.aiModelBadge.textContent = "AI 模型載入失敗";
+          dom.aiModelBadge.className = "text-sm font-bold bg-rose-600 text-white px-3 py-1 rounded-lg whitespace-nowrap";
+          showSystemAlert(
+            "AI 人體姿態模型載入失敗",
+            "請檢查您的網絡連線以載入首次使用的 MediaPipe 模型資源，您仍可使用畫面教學及「手動確認 +1 次」按鈕進行健步舞。"
+          );
+          return false;
+        }
+      }
+    }
+
+    /* -------------------------------------------------------------------------
+     * 7. WebRTC 相機啟動、前後鏡切換、硬件與數碼縮放控制
+     * ------------------------------------------------------------------------- */
+    async function startCamera() {
+      hideSystemAlert();
+
+      // 檢查安全環境 (HTTPS 或 localhost)
+      if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+        showSystemAlert(
+          "瀏覽器安全限制：需要 HTTPS 或 localhost 環境",
+          "根據瀏覽器私隱安全規定，開啟相機必須在 HTTPS 加密網頁或本機 localhost 伺服器下執行。請勿直接雙擊 file:// 開啟檔案。"
+        );
+        return false;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showSystemAlert(
+          "您的裝置或瀏覽器不支援相機功能",
+          "請使用較新版本的 Chrome、Safari 或 Edge 瀏覽器開啟本網頁。"
+        );
+        return false;
+      }
+
+      // 先釋放舊串流資源
+      stopCameraStreamOnly();
+
+      try {
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: state.facingMode },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        state.mediaStream = stream;
+        dom.webcamVideo.srcObject = stream;
+        await dom.webcamVideo.play();
+
+        state.isCameraActive = true;
+        dom.cameraIdlePlaceholder.classList.add("hidden");
+        dom.btnSwitchCamera.disabled = false;
+        dom.btnCloseCamera.disabled = false;
+
+        // 設定前置鏡像或後置正常顯示
+        if (state.facingMode === "user") {
+          dom.zoomContainer.classList.add("mirror-mode");
+          if (dom.cameraFacingText) dom.cameraFacingText.textContent = "鏡頭：前置（鏡像）";
+        } else {
+          dom.zoomContainer.classList.remove("mirror-mode");
+          if (dom.cameraFacingText) dom.cameraFacingText.textContent = "鏡頭：後置";
+        }
+
+        // 檢測相機硬件是否支援原生 Zoom
+        const [videoTrack] = stream.getVideoTracks();
+        const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        if (capabilities && "zoom" in capabilities) {
+          state.supportsHardwareZoom = true;
+        } else {
+          state.supportsHardwareZoom = false;
+        }
+
+        await applyCameraZoom(state.currentZoom);
+        return true;
+      } catch (err) {
+        console.error("開啟相機失敗：", err);
+        let title = "未能開啟相機";
+        let desc = "請確認您的裝置已連接相機，並允許瀏覽器使用相機權限。";
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          title = "相機權限已被拒絕";
+          desc = "請點擊瀏覽器網址列旁邊的「鎖頭」或「相機」圖示，將相機權限改為「允許」，然後再按一次「開始健步舞」。";
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          title = "偵測不到相機鏡頭";
+          desc = "您的裝置似乎沒有安裝相機。您仍可跟隨右方的動作教學及語音指示練習，並使用「手動確認 +1 次」按鈕記錄進度。";
+        }
+        showSystemAlert(title, desc);
+        updateCoachFeedback("未能開啟相機，請檢查相機權限或使用手動計數練習。", "warn", true);
+        return false;
+      }
+    }
+
+    /**
+     * 套用相機縮放（優先使用相機硬件縮放，若不支援或低於硬件下限則使用 CSS 數碼縮放並清楚標示）
+     * @param {number} zoomLevel 0.25 ~ 2.0
+     */
+    async function applyCameraZoom(zoomLevel) {
+      const clampedZoom = Math.min(2.0, Math.max(0.25, parseFloat(zoomLevel) || 1.0));
+      state.currentZoom = clampedZoom;
+
+      // 格式化倍率顯示（例如 0.25 倍、0.5 倍、1.0 倍）
+      const formattedZoom = Number.isInteger(clampedZoom * 10)
+        ? clampedZoom.toFixed(1)
+        : clampedZoom.toFixed(2);
+
+      dom.zoomSlider.value = clampedZoom;
+      dom.zoomValueDisplay.textContent = `${formattedZoom} 倍`;
+
+      // 更新 0.25x / 0.5x / 1.0x / 1.5x / 2.0x 快速按鈕高亮狀態
+      dom.zoomPresetBtns.forEach(btn => {
+        const btnVal = parseFloat(btn.getAttribute("data-zoom"));
+        if (Math.abs(btnVal - clampedZoom) < 0.03) {
+          btn.className = "zoom-preset-btn elderly-btn bg-teal-800 text-white border-slate-950 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]";
+        } else {
+          btn.className = "zoom-preset-btn elderly-btn bg-white text-slate-900 border-slate-800 px-3 py-1.5 rounded-xl text-base min-h-[2.75rem]";
+        }
+      });
+
+      const mirrorPrefix = state.facingMode === "user" ? "scaleX(-1) " : "";
+
+      if (state.supportsHardwareZoom && state.mediaStream) {
+        try {
+          const [videoTrack] = state.mediaStream.getVideoTracks();
+          const caps = videoTrack.getCapabilities();
+          const hwMin = caps.zoom.min || 1;
+          const hwMax = caps.zoom.max || 2;
+
+          // 當要求倍率在相機硬件支援範圍內時，直接使用硬件縮放
+          if (clampedZoom >= hwMin && clampedZoom <= hwMax) {
+            await videoTrack.applyConstraints({ advanced: [{ zoom: clampedZoom }] });
+            dom.zoomContainer.style.transform = `${mirrorPrefix}scale(1)`;
+            dom.zoomModeBadge.textContent = `硬件縮放：${formattedZoom}x`;
+            dom.zoomCapabilityNote.innerHTML = `<i class="fa-solid fa-check-circle text-emerald-700 mr-1"></i><span>您的相機支援<strong>硬件縮放（目前 ${formattedZoom} 倍）</strong>。請確保頭、手、腳完整在取景框內。</span>`;
+            return;
+          } else {
+            // 若選擇 0.25x / 0.5x 低於硬件最廣角下限，先將硬件設為最廣角 (hwMin)，再配合數碼縮小
+            await videoTrack.applyConstraints({ advanced: [{ zoom: hwMin }] });
+          }
+        } catch (err) {
+          console.warn("硬件縮放套用失敗，自動切換為數碼縮放：", err);
+        }
+      }
+
+      // 替代方案：CSS 數碼縮放（支援 0.25x、0.5x 縮小及 1.5x、2.0x 放大）
+      dom.zoomContainer.style.transform = `${mirrorPrefix}scale(${clampedZoom})`;
+      dom.zoomModeBadge.textContent = `數碼縮放：${formattedZoom}x`;
+      if (clampedZoom > 1.0) {
+        dom.zoomCapabilityNote.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-700 mr-1"></i><span>已啟用<strong>數碼放大（${formattedZoom} 倍）</strong>。數碼放大會裁切畫面四周，請向後站並確認全身關節仍在框內。</span>`;
+      } else if (clampedZoom < 1.0) {
+        dom.zoomCapabilityNote.innerHTML = `<i class="fa-solid fa-compress text-sky-700 mr-1"></i><span>已啟用<strong>數碼縮小（${formattedZoom} 倍）</strong>。畫面已縮小置中以完整顯示骨架；注意單一鏡頭本身拍攝角度不變，如室內空間許可，仍建議稍向後站以獲得最佳全身偵測效果。</span>`;
+      } else {
+        dom.zoomCapabilityNote.innerHTML = `<i class="fa-solid fa-circle-info text-amber-700 mr-1"></i><span>目前為 1.0 倍標準視野。您可選擇 0.25 倍或 0.5 倍縮小畫面，或 1.5 倍、2.0 倍放大畫面。</span>`;
+      }
+    }
+
+    /**
+     * 釋放相機硬體資源
+     */
+    function stopCameraStreamOnly() {
+      if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach(track => track.stop());
+        state.mediaStream = null;
+      }
+      dom.webcamVideo.srcObject = null;
+      state.isCameraActive = false;
+      state.isFullBodyVisible = false;
+      canvasCtx.clearRect(0, 0, dom.poseCanvas.width, dom.poseCanvas.height);
+      dom.cameraIdlePlaceholder.classList.remove("hidden");
+      dom.btnSwitchCamera.disabled = true;
+      dom.btnCloseCamera.disabled = true;
+
+      dom.framingBanner.className = "bg-slate-800 text-white px-4 py-3 rounded-xl border-2 border-slate-950 flex items-center justify-between gap-3";
+      dom.framingIcon.innerHTML = '<i class="fa-solid fa-camera text-amber-400"></i>';
+      dom.framingStatusText.textContent = "相機已關閉（已釋放相機資源）";
+    }
+
+    /* -------------------------------------------------------------------------
+     * 8. 全身取景檢查與骨架繪製
+     * ------------------------------------------------------------------------- */
+    /**
+     * 檢查關鍵身體關節（鼻/頭、雙肩、雙手腕、雙髖、雙膝、雙腳踝）是否在畫面內且信心度足夠
+     * 並考慮數碼縮放裁切範圍
+     */
+    function evaluateFullBodyFraming(landmarks) {
+      if (!landmarks || landmarks.length < 33) {
+        return {
+          ok: false,
+          statusText: "暫時未能辨識，請調整站立位置",
+          bannerClass: "bg-amber-600 text-white"
+        };
+      }
+
+      // 關鍵關節索引：0鼻, 11左肩, 12右肩, 15左手腕, 16右手腕, 23左髖, 24右髖, 25左膝, 26右膝, 27左踝, 28右踝
+      const requiredIndices = [0, 11, 12, 15, 16, 23, 24, 25, 26, 27, 28];
+      const minVisibility = 0.5;
+
+      // 若使用數碼縮放 (例如 1.5x 或 2.0x)，畫面可視座標範圍會向中心收縮
+      const effectiveZoom = (!state.supportsHardwareZoom && state.currentZoom > 1.0) ? state.currentZoom : 1.0;
+      const margin = (1 - 1 / effectiveZoom) / 2 + 0.03; // 留 3% 邊界緩衝
+      const minBound = margin;
+      const maxBound = 1 - margin;
+
+      const head = landmarks[0];
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+
+      // 檢查頭部與雙腳是否過近或超出上下邊界
+      const headMissing = (head.visibility ?? 0) < minVisibility || head.y < minBound;
+      const feetMissing =
+        ((leftAnkle.visibility ?? 0) < minVisibility && (rightAnkle.visibility ?? 0) < minVisibility) ||
+        leftAnkle.y > maxBound ||
+        rightAnkle.y > maxBound;
+
+      if (headMissing && feetMissing) {
+        return {
+          ok: false,
+          statusText: "請向後移動，讓頭部及雙腳放入框內",
+          bannerClass: "bg-rose-700 text-white"
+        };
+      }
+      if (headMissing) {
+        return {
+          ok: false,
+          statusText: "未能看清頭部，請向後移動或調高相機角度",
+          bannerClass: "bg-amber-600 text-white"
+        };
+      }
+      if (feetMissing) {
+        return {
+          ok: false,
+          statusText: "未能看清雙腳，請向後移動或調低相機角度",
+          bannerClass: "bg-amber-600 text-white"
+        };
+      }
+
+      // 檢查其餘關鍵關節信心度與左右邊界
+      for (const idx of requiredIndices) {
+        const pt = landmarks[idx];
+        if ((pt.visibility ?? 0) < minVisibility) {
+          return {
+            ok: false,
+            statusText: "暫時未能辨識全身關節，請調整站立位置或光線",
+            bannerClass: "bg-amber-600 text-white"
+          };
+        }
+        if (pt.x < minBound || pt.x > maxBound) {
+          return {
+            ok: false,
+            statusText: "請向畫面中間站立，避免雙手或身體超出邊界",
+            bannerClass: "bg-amber-600 text-white"
+          };
+        }
+      }
+
+      return {
+        ok: true,
+        statusText: "已偵測到全身！請跟隨指示進行健步舞",
+        bannerClass: "bg-emerald-700 text-white"
+      };
+    }
+
+    /**
+     * 對 MediaPipe 輸出的 33 個關節點進行指數移動平均 (EMA) 時間平滑處理，減少畫面抖動與誤判
+     */
+    function smoothPoseLandmarks(rawLandmarks) {
+      if (!state.smoothedLandmarks) {
+        state.smoothedLandmarks = rawLandmarks.map(pt => ({ ...pt }));
+        return state.smoothedLandmarks;
+      }
+
+      const alpha = state.smoothingAlpha;
+      for (let i = 0; i < rawLandmarks.length; i++) {
+        const raw = rawLandmarks[i];
+        const prev = state.smoothedLandmarks[i];
+        prev.x = alpha * raw.x + (1 - alpha) * prev.x;
+        prev.y = alpha * raw.y + (1 - alpha) * prev.y;
+        prev.z = alpha * raw.z + (1 - alpha) * prev.z;
+        prev.visibility = alpha * (raw.visibility ?? 1) + (1 - alpha) * (prev.visibility ?? 1);
+      }
+      return state.smoothedLandmarks;
+    }
+
+    /**
+     * 在 Canvas 上繪製高對比度的人體骨架與關節點
+     */
+    function drawSkeletonOnCanvas(landmarks, isFullBodyOk) {
+      const videoWidth = dom.webcamVideo.videoWidth || 640;
+      const videoHeight = dom.webcamVideo.videoHeight || 480;
+
+      if (dom.poseCanvas.width !== videoWidth || dom.poseCanvas.height !== videoHeight) {
+        dom.poseCanvas.width = videoWidth;
+        dom.poseCanvas.height = videoHeight;
+      }
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, videoWidth, videoHeight);
+
+      if (landmarks && landmarks.length > 0) {
+        const drawingUtils = new DrawingUtils(canvasCtx);
+        const lineColor = isFullBodyOk ? "#34D399" : "#FBBF24"; // 全身清晰用翠綠色，否則用琥珀黃
+        const pointColor = isFullBodyOk ? "#FEF08A" : "#FB7185";
+
+        drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
+          color: lineColor,
+          lineWidth: 5
+        });
+        drawingUtils.drawLandmarks(landmarks, {
+          color: pointColor,
+          fillColor: "#0F172A",
+          lineWidth: 3,
+          radius: 6
+        });
+      }
+      canvasCtx.restore();
+    }
+
+    /* -------------------------------------------------------------------------
+     * 9. 六組健步舞動作獨立辨識邏輯與狀態機
+     * ------------------------------------------------------------------------- */
+    function resetDetectorState() {
+      state.detectorState = {
+        phase: "IDLE",
+        lastRepTimestamp: performance.now(),
+        activeSide: null,
+        hipCenterHistory: [],
+        baselineTorsoSize: null,
+        baselineHipX: null,
+        armCircleEnergy: 0,
+        partialPeakValue: 0,
+        lastHintTimestamp: 0
+      };
+    }
+
+    /**
+     * 計算三個關節點形成的夾角 (度數 0 ~ 180)
+     */
+    function calculateAngle(a, b, c) {
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs((radians * 180.0) / Math.PI);
+      if (angle > 180.0) angle = 360.0 - angle;
+      return angle;
+    }
+
+    /**
+     * 根據目前選定的動作 (1~6) 執行對應的獨立辨識邏輯
+     */
+    function analyzeCurrentExercise(lm) {
+      const now = performance.now();
+      const exIndex = state.currentExerciseIndex;
+      const currentReps = state.completedRepsPerExercise[exIndex];
+      const targetReps = EXERCISES[exIndex].targetReps;
+
+      // 若本組已達標，不重複計數
+      if (currentReps >= targetReps) {
+        return;
+      }
+
+      // 取出主要關節：肩(11,12)、肘(13,14)、腕(15,16)、髖(23,24)、膝(25,26)、踝(27,28)
+      const lShoulder = lm[11], rShoulder = lm[12];
+      const lElbow = lm[13], rElbow = lm[14];
+      const lWrist = lm[15], rWrist = lm[16];
+      const lHip = lm[23], rHip = lm[24];
+      const lKnee = lm[25], rKnee = lm[26];
+      const lAnkle = lm[27], rAnkle = lm[28];
+
+      // 計算身體基準尺度（肩中點至髖中點距離，用於正規化不同身高與站立距離）
+      const shoulderMidX = (lShoulder.x + rShoulder.x) / 2;
+      const shoulderMidY = (lShoulder.y + rShoulder.y) / 2;
+      const hipMidX = (lHip.x + rHip.x) / 2;
+      const hipMidY = (lHip.y + rHip.y) / 2;
+      const torsoLength = Math.max(0.12, Math.hypot(shoulderMidX - hipMidX, shoulderMidY - hipMidY));
+      const shoulderWidth = Math.max(0.10, Math.hypot(lShoulder.x - rShoulder.x, lShoulder.y - rShoulder.y));
+
+      const ds = state.detectorState;
+      if (!ds.baselineTorsoSize) ds.baselineTorsoSize = torsoLength;
+      if (ds.baselineHipX === null) ds.baselineHipX = hipMidX;
+
+      // 左右腳交替抬起高度差（正規化至軀幹長度）
+      const ankleDiffY = Math.abs(lAnkle.y - rAnkle.y) / torsoLength;
+      const kneeDiffY = Math.abs(lKnee.y - rKnee.y) / torsoLength;
+      const stepSignal = Math.max(ankleDiffY, kneeDiffY * 0.85);
+
+      // 每次完成動作之間至少間隔 650ms，避免抖動重複計數
+      const cooldownPassed = (now - ds.lastRepTimestamp) > 650;
+
+      switch (exIndex) {
+        /* -------------------------------------------------------------------
+         * 動作一：原地及向前踏步
+         * 前 4 次：原地踏步（左右腳交替抬起及放下）
+         * 後 4 次：向前踏步 + 雙手向前推（分析手肘伸展/手腕胸前推出 + 踏步或軀幹前移）
+         * ------------------------------------------------------------------- */
+        case 0: {
+          const isForwardSubStage = currentReps >= 4;
+          if (!isForwardSubStage) {
+            // 第 1 步（0~3 次）：原地踏步
+            if (ds.phase === "IDLE") {
+              if (stepSignal > 0.14 && cooldownPassed) {
+                ds.phase = "ACTIVE";
+                ds.activeSide = lAnkle.y < rAnkle.y ? "LEFT" : "RIGHT";
+              } else if (now - ds.lastHintTimestamp > 4500) {
+                updateCoachFeedback("請跟隨畫面指示，左右腳交替慢慢踏步。", "info", false);
+                ds.lastHintTimestamp = now;
+              }
+            } else if (ds.phase === "ACTIVE") {
+              // 當雙腳回到接近平齊，完成一次踏步週期
+              if (stepSignal < 0.07) {
+                ds.phase = "IDLE";
+                ds.lastRepTimestamp = now;
+                incrementRepCount("做得好！原地踏步完成一次，請保持自然呼吸。");
+              }
+            }
+          } else {
+            // 第 2 步（4~7 次）：向前踏步並雙手向前推
+            // 雙手在胸前高度且手肘作前後推伸動作，同時配合腳部踏步
+            const wristsNearChestY =
+              lWrist.y > shoulderMidY - 0.15 * torsoLength &&
+              lWrist.y < hipMidY + 0.1 * torsoLength &&
+              rWrist.y > shoulderMidY - 0.15 * torsoLength &&
+              rWrist.y < hipMidY + 0.1 * torsoLength;
+
+            const avgElbowAngle = (calculateAngle(lShoulder, lElbow, lWrist) + calculateAngle(rShoulder, rElbow, rWrist)) / 2;
+            const handsPushedOut = wristsNearChestY && (avgElbowAngle > 115 || Math.abs(lWrist.x - rWrist.x) > shoulderWidth * 0.75);
+
+            if (ds.phase === "IDLE") {
+              if (stepSignal > 0.12 && handsPushedOut && cooldownPassed) {
+                ds.phase = "ACTIVE";
+              } else if (stepSignal > 0.13 && !handsPushedOut && now - ds.lastHintTimestamp > 3500) {
+                updateCoachFeedback("向前踏步時，請把雙手由胸前向前推出。", "warn", true);
+                ds.lastHintTimestamp = now;
+              }
+            } else if (ds.phase === "ACTIVE") {
+              if (stepSignal < 0.08 || avgElbowAngle < 95) {
+                ds.phase = "IDLE";
+                ds.lastRepTimestamp = now;
+                incrementRepCount("做得好！向前踏步及推手完成一次。");
+              }
+            }
+          }
+          break;
+        }
+
+        /* -------------------------------------------------------------------
+         * 動作二：原地及向後踏步
+         * 前 4 次：原地踏步 4 次
+         * 後 4 次：向後踏步 4 次 + 雙臂屈曲在胸前打圈
+         * ------------------------------------------------------------------- */
+        case 1: {
+          const isBackwardSubStage = currentReps >= 4;
+          if (!isBackwardSubStage) {
+            if (ds.phase === "IDLE") {
+              if (stepSignal > 0.14 && cooldownPassed) {
+                ds.phase = "ACTIVE";
+              }
+            } else if (ds.phase === "ACTIVE") {
+              if (stepSignal < 0.07) {
+                ds.phase = "IDLE";
+                ds.lastRepTimestamp = now;
+                incrementRepCount("原地踏步做得好！請保持穩定節奏。");
+              }
+            }
+          } else {
+            // 後 4 次：向後踏步 + 雙臂屈曲在胸前打圈
+            const armsAtChest =
+              lWrist.y > shoulderMidY - 0.1 * torsoLength &&
+              lWrist.y < hipMidY &&
+              rWrist.y > shoulderMidY - 0.1 * torsoLength &&
+              rWrist.y < hipMidY;
+
+            // 計算手腕持續移動量以偵測打圈動作
+            if (ds.hipCenterHistory.length > 0) {
+              const last = ds.hipCenterHistory[ds.hipCenterHistory.length - 1];
+              const wristMove = Math.hypot(lWrist.x - last.lx, lWrist.y - last.ly) + Math.hypot(rWrist.x - last.rx, rWrist.y - last.ry);
+              if (armsAtChest) {
+                ds.armCircleEnergy = Math.min(1.0, ds.armCircleEnergy * 0.85 + wristMove * 3.5);
+              } else {
+                ds.armCircleEnergy *= 0.8;
+              }
+            }
+            ds.hipCenterHistory.push({ lx: lWrist.x, ly: lWrist.y, rx: rWrist.x, ry: rWrist.y });
+            if (ds.hipCenterHistory.length > 10) ds.hipCenterHistory.shift();
+
+            if (ds.phase === "IDLE") {
+              if (stepSignal > 0.12 && armsAtChest && ds.armCircleEnergy > 0.12 && cooldownPassed) {
+                ds.phase = "ACTIVE";
+              } else if (stepSignal > 0.13 && !armsAtChest && now - ds.lastHintTimestamp > 3500) {
+                updateCoachFeedback("向後踏步時，請將雙臂屈曲在胸前打圈。", "warn", true);
+                ds.lastHintTimestamp = now;
+              }
+            } else if (ds.phase === "ACTIVE") {
+              if (stepSignal < 0.075) {
+                ds.phase = "IDLE";
+                ds.lastRepTimestamp = now;
+                incrementRepCount("向後踏步及胸前打圈做得好！");
+              }
+            }
+          }
+          break;
+        }
+
+        /* -------------------------------------------------------------------
+         * 動作三：左右腳跟點地 (共 4 次)
+         * 先右腳跟向前點地收回，再左腳跟向前點地收回；點地時雙臂屈曲向上提
+         * ------------------------------------------------------------------- */
+        case 2: {
+          // 分析腳踝展開或前後位置差，以及雙手手腕是否由腰部向上提至胸口上方
+          const ankleSpreadX = Math.abs(lAnkle.x - rAnkle.x) / shoulderWidth;
+          const legPointSignal = Math.max(ankleDiffY, (ankleSpreadX - 0.85) * 0.5);
+
+          // 雙手手腕高於手肘（屈曲上提）
+          const wristsLifted = (lWrist.y < lElbow.y + 0.05 * torsoLength) && (rWrist.y < rElbow.y + 0.05 * torsoLength);
+          const wristsReturned = (lWrist.y > lElbow.y + 0.12 * torsoLength) || (rWrist.y > rElbow.y + 0.12 * torsoLength);
+
+          if (ds.phase === "IDLE") {
+            if (legPointSignal > 0.11 && wristsLifted && cooldownPassed) {
+              ds.phase = "ACTIVE";
+            } else if (legPointSignal > 0.12 && !wristsLifted && now - ds.lastHintTimestamp > 3500) {
+              updateCoachFeedback("腳跟向前點地時，請把雙臂屈曲向上提。", "warn", true);
+              ds.lastHintTimestamp = now;
+            } else if (wristsLifted && legPointSignal <= 0.09 && now - ds.lastHintTimestamp > 3800) {
+              updateCoachFeedback("請同時伸出一隻腳，以腳跟向前點地。", "warn", true);
+              ds.lastHintTimestamp = now;
+            }
+          } else if (ds.phase === "ACTIVE") {
+            if (legPointSignal < 0.07 || wristsReturned) {
+              ds.phase = "IDLE";
+              ds.lastRepTimestamp = now;
+              incrementRepCount("腳跟點地配合舉手做得好！請換另一隻腳。");
+            }
+          }
+          break;
+        }
+
+        /* -------------------------------------------------------------------
+         * 動作四：左右踏步及開合手臂 (共 8 次：右 4 次、左 4 次)
+         * 雙臂先在胸前屈曲，再向兩旁張開，同時配合左右踏步
+         * ------------------------------------------------------------------- */
+        case 3: {
+          const wristSpan = Math.abs(lWrist.x - rWrist.x) / shoulderWidth;
+          const wristsChestLevel =
+            lWrist.y > shoulderMidY - 0.25 * torsoLength &&
+            lWrist.y < hipMidY + 0.1 * torsoLength &&
+            rWrist.y > shoulderMidY - 0.25 * torsoLength &&
+            rWrist.y < hipMidY + 0.1 * torsoLength;
+
+          if (ds.phase === "IDLE") {
+            // 當雙手向兩旁張開超過肩寬 1.65 倍
+            if (wristsChestLevel && wristSpan > 1.65 && cooldownPassed) {
+              ds.phase = "ACTIVE";
+              ds.partialPeakValue = 0;
+            } else if (wristsChestLevel && wristSpan > 1.25) {
+              ds.partialPeakValue = Math.max(ds.partialPeakValue, wristSpan);
+            } else if (ds.partialPeakValue > 1.25 && wristSpan < 1.0 && now - ds.lastHintTimestamp > 3200) {
+              updateCoachFeedback("請將雙臂向兩旁再慢慢張開多一點。", "warn", true);
+              ds.partialPeakValue = 0;
+              ds.lastHintTimestamp = now;
+            }
+          } else if (ds.phase === "ACTIVE") {
+            // 雙臂收回胸前合攏 (小於肩寬 1.15 倍) 完成一次開合週期
+            if (wristSpan < 1.15) {
+              ds.phase = "IDLE";
+              ds.lastRepTimestamp = now;
+              incrementRepCount("手臂開合及踏步做得好！請保持自然呼吸。");
+            }
+          }
+          break;
+        }
+
+        /* -------------------------------------------------------------------
+         * 動作五：前後踏步及向上推手 (共 8 次：前 4 次、後 4 次)
+         * 踏步時雙手由肩膊位置向上推高過頭
+         * ------------------------------------------------------------------- */
+        case 4: {
+          // 計算雙手手腕相對於肩膊的高度（Y 軸向上為較小值）
+          const leftLift = (lShoulder.y - lWrist.y) / torsoLength;
+          const rightLift = (rShoulder.y - rWrist.y) / torsoLength;
+          const avgOverheadLift = (leftLift + rightLift) / 2;
+
+          if (ds.phase === "IDLE") {
+            if (avgOverheadLift > 0.38 && cooldownPassed) {
+              ds.phase = "ACTIVE";
+              ds.partialPeakValue = 0;
+            } else if (avgOverheadLift > 0.15) {
+              ds.partialPeakValue = Math.max(ds.partialPeakValue, avgOverheadLift);
+            } else if (ds.partialPeakValue > 0.15 && avgOverheadLift < 0.05 && now - ds.lastHintTimestamp > 3200) {
+              updateCoachFeedback("動作尚未完成，請把雙手由肩膊向上推高。", "warn", true);
+              ds.partialPeakValue = 0;
+              ds.lastHintTimestamp = now;
+            }
+          } else if (ds.phase === "ACTIVE") {
+            // 雙手回到肩膊高度附近即完成一次週期
+            if (avgOverheadLift < 0.12) {
+              ds.phase = "IDLE";
+              ds.lastRepTimestamp = now;
+              incrementRepCount("向上推手做得好！雙手請慢慢回到肩膊位置。");
+            }
+          }
+          break;
+        }
+
+        /* -------------------------------------------------------------------
+         * 動作六：左右踏步及側平舉 (共 8 次：右 4 次、左 4 次)
+         * 雙手由身體兩側慢慢張開至肩膊水平，再放下
+         * ------------------------------------------------------------------- */
+        case 5: {
+          const wristSpan = Math.abs(lWrist.x - rWrist.x) / shoulderWidth;
+          // 檢查手腕高度是否接近肩膊水平（差距在 0.32 倍軀幹長度內）
+          const lNearShoulderY = Math.abs(lWrist.y - lShoulder.y) / torsoLength < 0.32;
+          const rNearShoulderY = Math.abs(rWrist.y - rShoulder.y) / torsoLength < 0.32;
+          const wristsLowAtSides =
+            (lWrist.y - lShoulder.y) / torsoLength > 0.42 &&
+            (rWrist.y - rShoulder.y) / torsoLength > 0.42;
+
+          if (ds.phase === "IDLE") {
+            if (lNearShoulderY && rNearShoulderY && wristSpan > 1.75 && cooldownPassed) {
+              ds.phase = "ACTIVE";
+              ds.partialPeakValue = 0;
+            } else if (wristSpan > 1.35 && !wristsLowAtSides) {
+              ds.partialPeakValue = Math.max(ds.partialPeakValue, wristSpan);
+            } else if (ds.partialPeakValue > 1.35 && wristsLowAtSides && now - ds.lastHintTimestamp > 3200) {
+              updateCoachFeedback("請慢慢把雙手抬高至肩膊水平。", "warn", true);
+              ds.partialPeakValue = 0;
+              ds.lastHintTimestamp = now;
+            }
+          } else if (ds.phase === "ACTIVE") {
+            // 當雙手慢慢放回身體兩側，完成一次側平舉週期
+            if (wristsLowAtSides) {
+              ds.phase = "IDLE";
+              ds.lastRepTimestamp = now;
+              incrementRepCount("側平舉做得非常標準！請保持自然呼吸。");
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    /* -------------------------------------------------------------------------
+     * 10. 次數增加、階段提示更新與完成摘要
+     * ------------------------------------------------------------------------- */
+    function incrementRepCount(feedbackMessage) {
+      const idx = state.currentExerciseIndex;
+      const ex = EXERCISES[idx];
+
+      if (state.completedRepsPerExercise[idx] < ex.targetReps) {
+        state.completedRepsPerExercise[idx] += 1;
+      }
+
+      const newCount = state.completedRepsPerExercise[idx];
+      updateExerciseUI();
+
+      // 若剛完成前 4 次進入後 4 次子階段，提供清晰子階段轉換提示
+      if (newCount === 4 && ex.targetReps === 8) {
+        const transitionMsg = getSubStageTransitionMessage(idx);
+        updateCoachFeedback(transitionMsg, "good", true);
+        return;
+      }
+
+      // 若完成本組全部目標次數
+      if (newCount >= ex.targetReps) {
+        const allDone = state.completedRepsPerExercise.every((c, i) => c >= EXERCISES[i].targetReps);
+        if (allDone) {
+          updateCoachFeedback(`恭喜您！已完成全部六組長者健步舞！`, "good", true);
+          showWorkoutSummary(true);
+        } else if (idx < EXERCISES.length - 1) {
+          updateCoachFeedback(`做得好！「${ex.name}」已完成！可按「下一個」進入下一組動作。`, "good", true);
+        } else {
+          updateCoachFeedback(`做得好！本組動作已完成！`, "good", true);
+        }
+      } else {
+        updateCoachFeedback(`${feedbackMessage}（已完成 ${newCount} / ${ex.targetReps} 次）`, "good", true);
+      }
+    }
+
+    function getSubStageTransitionMessage(exerciseIndex) {
+      switch (exerciseIndex) {
+        case 0:
+          return "已完成 4 次原地踏步！現在請向前踏步 4 次，同時雙手向前推。";
+        case 1:
+          return "已完成 4 次原地踏步！現在請向後踏步 4 次，同時雙臂在胸前打圈。";
+        case 3:
+          return "已完成 4 次向右踏步！現在請改為向左踏步 4 次，繼續開合手臂。";
+        case 4:
+          return "已完成 4 次向前踏步！現在請改為向後踏步 4 次，繼續向上推手。";
+        case 5:
+          return "已完成 4 次向右踏步！現在請改為向左踏步 4 次，繼續雙手側平舉。";
+        default:
+          return "做得好！請繼續完成餘下次數。";
+      }
+    }
+
+    /**
+     * 更新子階段提示文字（例如區分前 4 次與後 4 次）
+     */
+    function updateSubStageText() {
+      const idx = state.currentExerciseIndex;
+      const reps = state.completedRepsPerExercise[idx];
+
+      switch (idx) {
+        case 0:
+          if (reps < 4) {
+            dom.subStagePrompt.textContent = `第 1 步：原地踏步 (${reps} / 4 次)`;
+            dom.subStageHint.textContent = "左右腳交替抬起踏步，保持自然呼吸";
+          } else {
+            dom.subStagePrompt.textContent = `第 2 步：向前踏步及推手 (${reps - 4} / 4 次)`;
+            dom.subStageHint.textContent = "向前踏步時，雙手由胸前向前推出";
+          }
+          break;
+        case 1:
+          if (reps < 4) {
+            dom.subStagePrompt.textContent = `第 1 步：原地踏步 (${reps} / 4 次)`;
+            dom.subStageHint.textContent = "先在原地穩定踏步 4 次";
+          } else {
+            dom.subStagePrompt.textContent = `第 2 步：向後踏步及胸前打圈 (${reps - 4} / 4 次)`;
+            dom.subStageHint.textContent = "向後踏小步，雙臂屈曲在胸前轉動打圈";
+          }
+          break;
+        case 2:
+          dom.subStagePrompt.textContent = `左右腳跟交替向前點地 (${reps} / 4 次)`;
+          dom.subStageHint.textContent = "右腳跟點地收回、左腳跟點地收回，同時雙臂屈曲上提";
+          break;
+        case 3:
+          if (reps < 4) {
+            dom.subStagePrompt.textContent = `第 1 步：向右踏步 + 開合手臂 (${reps} / 4 次)`;
+            dom.subStageHint.textContent = "向右踏步，雙臂在胸前屈曲再向兩旁張開";
+          } else {
+            dom.subStagePrompt.textContent = `第 2 步：向左踏步 + 開合手臂 (${reps - 4} / 4 次)`;
+            dom.subStageHint.textContent = "向左踏步，雙臂在胸前屈曲再向兩旁張開";
+          }
+          break;
+        case 4:
+          if (reps < 4) {
+            dom.subStagePrompt.textContent = `第 1 步：向前踏步 + 向上推手 (${reps} / 4 次)`;
+            dom.subStageHint.textContent = "向前踏步，雙手由肩膊位置向上推高";
+          } else {
+            dom.subStagePrompt.textContent = `第 2 步：向後踏步 + 向上推手 (${reps - 4} / 4 次)`;
+            dom.subStageHint.textContent = "向後踏步，雙手由肩膊位置向上推高";
+          }
+          break;
+        case 5:
+          if (reps < 4) {
+            dom.subStagePrompt.textContent = `第 1 步：向右踏步 + 側平舉 (${reps} / 4 次)`;
+            dom.subStageHint.textContent = "向右踏步，雙手由身體兩側慢慢張開至肩膊水平";
+          } else {
+            dom.subStagePrompt.textContent = `第 2 步：向左踏步 + 側平舉 (${reps - 4} / 4 次)`;
+            dom.subStageHint.textContent = "向左踏步，雙手由身體兩側慢慢張開至肩膊水平";
+          }
+          break;
+      }
+    }
+
+    /* -------------------------------------------------------------------------
+     * 11. 即時影像分析主迴圈 (requestAnimationFrame)
+     * ------------------------------------------------------------------------- */
+    function renderDetectionLoop() {
+      if (!state.isCameraActive) return;
+
+      const video = dom.webcamVideo;
+      if (video.readyState >= 2 && state.isModelReady && state.poseLandmarker) {
+        const nowMs = performance.now();
+        if (video.currentTime !== state.lastFrameTime) {
+          state.lastFrameTime = video.currentTime;
+          const result = state.poseLandmarker.detectForVideo(video, nowMs);
+
+          if (result.landmarks && result.landmarks.length > 0) {
+            const smoothed = smoothPoseLandmarks(result.landmarks[0]);
+            const framing = evaluateFullBodyFraming(smoothed);
+            state.isFullBodyVisible = framing.ok;
+
+            // 更新取景框頂部狀態列
+            dom.framingBanner.className = `${framing.bannerClass} px-4 py-3 rounded-xl border-2 border-slate-950 flex items-center justify-between gap-3 transition-colors`;
+            dom.framingIcon.innerHTML = framing.ok
+              ? '<i class="fa-solid fa-circle-check text-amber-300"></i>'
+              : '<i class="fa-solid fa-person-circle-exclamation text-amber-300"></i>';
+            dom.framingStatusText.textContent = framing.statusText;
+
+            // 繪製人體骨架
+            drawSkeletonOnCanvas(smoothed, framing.ok);
+
+            // 若運動進行中且未暫停
+            if (state.isWorkoutRunning && !state.isPaused) {
+              if (framing.ok) {
+                analyzeCurrentExercise(smoothed);
+              } else {
+                // 關鍵關節被遮擋或離開畫面時，暫停評分並溫和提示調整位置，不直接判錯
+                if (nowMs - state.detectorState.lastHintTimestamp > 4000) {
+                  updateCoachFeedback("暫時未能看清你的動作，請調整站立位置。", "warn", true);
+                  state.detectorState.lastHintTimestamp = nowMs;
+                }
+              }
+            }
+          } else {
+            // 完全偵測不到人體
+            state.isFullBodyVisible = false;
+            state.smoothedLandmarks = null;
+            drawSkeletonOnCanvas(null, false);
+            dom.framingBanner.className = "bg-amber-600 text-white px-4 py-3 rounded-xl border-2 border-slate-950 flex items-center justify-between gap-3";
+            dom.framingIcon.innerHTML = '<i class="fa-solid fa-user-slash text-amber-200"></i>';
+            dom.framingStatusText.textContent = "暫時未能辨識，請站在鏡頭前取景框內";
+
+            if (state.isWorkoutRunning && !state.isPaused && (nowMs - state.detectorState.lastHintTimestamp > 4500)) {
+              updateCoachFeedback("暫時未能辨識，請調整站立位置。", "warn", true);
+              state.detectorState.lastHintTimestamp = nowMs;
+            }
+          }
+        }
+      }
+
+      requestAnimationFrame(renderDetectionLoop);
+    }
+
+    /* -------------------------------------------------------------------------
+     * 12. 介面更新與計時器管理
+     * ------------------------------------------------------------------------- */
+    function formatTime(totalSeconds) {
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    function startTimer() {
+      stopTimer();
+      state.timerInterval = setInterval(() => {
+        if (state.isWorkoutRunning && !state.isPaused) {
+          state.elapsedSeconds += 1;
+          dom.workoutTimerText.textContent = formatTime(state.elapsedSeconds);
+        }
+      }, 1000);
+    }
+
+    function stopTimer() {
+      if (state.timerInterval) {
+        clearInterval(state.timerInterval);
+        state.timerInterval = null;
+      }
+    }
+
+    function updateExerciseUI() {
+      const idx = state.currentExerciseIndex;
+      const ex = EXERCISES[idx];
+      const count = state.completedRepsPerExercise[idx];
+      const pct = Math.min(100, Math.round((count / ex.targetReps) * 100));
+
+      dom.exerciseStepBadge.textContent = `第 ${idx + 1} 組（共 ${EXERCISES.length} 組）`;
+      dom.exerciseTitle.textContent = ex.name;
+      dom.exerciseDescription.textContent = ex.description;
+      dom.exerciseSvgContainer.innerHTML = ex.svgMarkup;
+
+      dom.currentRepCount.textContent = count;
+      dom.targetRepCount.textContent = ex.targetReps;
+      dom.exerciseProgressBar.style.width = `${pct}%`;
+
+      dom.correctPostureTip.textContent = ex.correctTip;
+      dom.commonMistakeTip.textContent = ex.mistakeTip;
+
+      dom.btnPrevExercise.disabled = idx === 0;
+      dom.btnNextExercise.disabled = idx === EXERCISES.length - 1;
+
+      updateSubStageText();
+
+      // 更新總體完成組數
+      const completedSets = state.completedRepsPerExercise.filter((c, i) => c >= EXERCISES[i].targetReps).length;
+      dom.overallProgressText.textContent = `已完成 ${completedSets} / ${EXERCISES.length} 組`;
+
+      // 更新下方 6 組動作快速導覽網格
+      renderQuickNavGrid();
+    }
+
+    function renderQuickNavGrid() {
+      dom.exerciseQuickNavGrid.innerHTML = EXERCISES.map((ex, i) => {
+        const reps = state.completedRepsPerExercise[i];
+        const isCurrent = i === state.currentExerciseIndex;
+        const isDone = reps >= ex.targetReps;
+
+        let cardStyle = "bg-slate-50 border-slate-400 text-slate-900";
+        if (isCurrent) {
+          cardStyle = "bg-amber-100 border-teal-900 ring-4 ring-teal-700/30 text-slate-950";
+        } else if (isDone) {
+          cardStyle = "bg-emerald-50 border-emerald-700 text-emerald-950";
+        }
+
+        return `
+          <button type="button" data-ex-index="${i}" class="quick-nav-card text-left p-3.5 rounded-xl border-3 border-2 ${cardStyle} transition hover:shadow-md flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-black uppercase text-teal-900">
+                ${isCurrent ? '<i class="fa-solid fa-play mr-1"></i>目前練習' : `第 ${i + 1} 組`}
+              </div>
+              <div class="text-lg font-black">${ex.name}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="inline-block px-3 py-1 rounded-lg font-black text-base ${isDone ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-900'}">
+                ${reps} / ${ex.targetReps} 次
+              </span>
+            </div>
+          </button>
+        `;
+      }).join("");
+
+      document.querySelectorAll(".quick-nav-card").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const targetIdx = parseInt(btn.getAttribute("data-ex-index"), 10);
+          selectExercise(targetIdx, true);
+        });
+      });
+    }
+
+    function selectExercise(index, announceVoice = true) {
+      if (index < 0 || index >= EXERCISES.length) return;
+      state.currentExerciseIndex = index;
+      resetDetectorState();
+      updateExerciseUI();
+
+      const ex = EXERCISES[index];
+      const msg = `${ex.name}。${ex.description}`;
+      updateCoachFeedback(`請準備：${ex.name}`, "info", false);
+      if (announceVoice) {
+        speakInstruction(msg, true);
+      }
+    }
+
+    /**
+     * 顯示運動摘要區塊
+     */
+    function showWorkoutSummary(allCompleted = false) {
+      dom.workoutSummarySection.classList.remove("hidden");
+      dom.summaryTotalTime.textContent = formatTime(state.elapsedSeconds);
+
+      if (allCompleted) {
+        dom.summarySubtitle.textContent = "太好啦！您已經完成全部六組長者健步舞，記得飲水同埋做緩和伸展呀！";
+      } else {
+        dom.summarySubtitle.textContent = "做得好！今日已經活動咗身體，以下係您今次嘅練習紀錄：";
+      }
+
+      dom.summaryDetailsGrid.innerHTML = EXERCISES.map((ex, i) => {
+        const count = state.completedRepsPerExercise[i];
+        const isDone = count >= ex.targetReps;
+        return `
+          <div class="bg-white border-2 border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <div class="text-lg font-black text-slate-950">${ex.name}</div>
+              <div class="text-sm font-bold ${isDone ? 'text-emerald-700' : 'text-amber-700'}">
+                ${isDone ? '<i class="fa-solid fa-circle-check mr-1"></i>已達標完成' : '<i class="fa-solid fa-clock mr-1"></i>部分完成'}
+              </div>
+            </div>
+            <div class="text-2xl font-black ${isDone ? 'text-emerald-800' : 'text-slate-800'}">
+              ${count} / ${ex.targetReps} 次
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      dom.workoutSummarySection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    /* -------------------------------------------------------------------------
+     * 13. 事件監聽器綁定
+     * ------------------------------------------------------------------------- */
+    function bindEvents() {
+      // 1. 開始健步舞
+      dom.btnStartWorkout.addEventListener("click", async () => {
+        dom.btnStartWorkout.disabled = true;
+        updateCoachFeedback("正在啟動相機及 AI 教練，請稍候...", "info", false);
+
+        const [, camOk] = await Promise.all([
+          initMediaPipePose(),
+          startCamera()
+        ]);
+
+        state.isWorkoutRunning = true;
+        state.isPaused = false;
+        dom.workoutSummarySection.classList.add("hidden");
+
+        dom.btnPauseWorkout.disabled = false;
+        dom.btnPauseWorkout.classList.remove("hidden");
+        dom.btnResumeWorkout.disabled = true;
+        dom.btnResumeWorkout.classList.add("hidden");
+        dom.btnEndWorkout.disabled = false;
+
+        startTimer();
+        resetDetectorState();
+
+        const currentEx = EXERCISES[state.currentExerciseIndex];
+        if (camOk) {
+          renderDetectionLoop();
+          const welcomeMsg = `開始健步舞！請站在全身取景框內。${currentEx.name}：${currentEx.description}`;
+          updateCoachFeedback(`請站在框內跟隨指示：${currentEx.name}`, "info", false);
+          speakInstruction(welcomeMsg, true);
+        } else {
+          dom.btnStartWorkout.disabled = false;
+        }
+      });
+
+      // 2. 暫停運動（保留原有進度）
+      dom.btnPauseWorkout.addEventListener("click", () => {
+        if (!state.isWorkoutRunning) return;
+        state.isPaused = true;
+        dom.btnPauseWorkout.disabled = true;
+        dom.btnPauseWorkout.classList.add("hidden");
+        dom.btnResumeWorkout.disabled = false;
+        dom.btnResumeWorkout.classList.remove("hidden");
+        updateCoachFeedback("運動已暫停，您的進度已保留。休息夠可以按「繼續」。", "warn", true);
+      });
+
+      // 3. 繼續運動
+      dom.btnResumeWorkout.addEventListener("click", () => {
+        if (!state.isWorkoutRunning) return;
+        state.isPaused = false;
+        resetDetectorState();
+        dom.btnResumeWorkout.disabled = true;
+        dom.btnResumeWorkout.classList.add("hidden");
+        dom.btnPauseWorkout.disabled = false;
+        dom.btnPauseWorkout.classList.remove("hidden");
+        const ex = EXERCISES[state.currentExerciseIndex];
+        updateCoachFeedback(`繼續練習：${ex.name}，請保持自然呼吸。`, "info", true);
+      });
+
+      // 4. 結束運動（釋放相機資源並顯示運動摘要）
+      dom.btnEndWorkout.addEventListener("click", () => {
+        state.isWorkoutRunning = false;
+        state.isPaused = false;
+        stopTimer();
+        stopCameraStreamOnly();
+
+        dom.btnStartWorkout.disabled = false;
+        dom.btnPauseWorkout.disabled = true;
+        dom.btnPauseWorkout.classList.remove("hidden");
+        dom.btnResumeWorkout.disabled = true;
+        dom.btnResumeWorkout.classList.add("hidden");
+        dom.btnEndWorkout.disabled = true;
+
+        updateCoachFeedback("已結束運動並關閉相機。請查看下方運動成績表！", "good", true);
+        showWorkoutSummary(false);
+      });
+
+      // 5. 重新開始（重置全部六組進度及計時器）
+      const handleFullRestart = () => {
+        state.completedRepsPerExercise = [0, 0, 0, 0, 0, 0];
+        state.elapsedSeconds = 0;
+        dom.workoutTimerText.textContent = "00:00";
+        dom.workoutSummarySection.classList.add("hidden");
+        selectExercise(0, true);
+        updateCoachFeedback("已重新開始全部六組進度！", "info", false);
+      };
+
+      dom.btnRestartAll.addEventListener("click", handleFullRestart);
+      dom.btnSummaryPracticeAgain.addEventListener("click", handleFullRestart);
+
+      // 6. 上一個 / 下一個動作 / 重新練習本組 / 手動確認 +1 次
+      dom.btnPrevExercise.addEventListener("click", () => {
+        selectExercise(state.currentExerciseIndex - 1, true);
+      });
+
+      dom.btnNextExercise.addEventListener("click", () => {
+        selectExercise(state.currentExerciseIndex + 1, true);
+      });
+
+      dom.btnResetCurrentExercise.addEventListener("click", () => {
+        state.completedRepsPerExercise[state.currentExerciseIndex] = 0;
+        resetDetectorState();
+        updateExerciseUI();
+        updateCoachFeedback("已重置本組次數，請重新練習。", "info", true);
+      });
+
+      dom.btnManualAddRep.addEventListener("click", () => {
+        incrementRepCount("已手動確認完成一次動作！");
+      });
+
+      // 7. 相機前後切換與關閉相機
+      dom.btnSwitchCamera.addEventListener("click", async () => {
+        state.facingMode = state.facingMode === "user" ? "environment" : "user";
+        const ok = await startCamera();
+        if (ok) {
+          renderDetectionLoop();
+          updateCoachFeedback("已切換鏡頭方向，請確認全身在框內。", "info", true);
+        }
+      });
+
+      dom.btnCloseCamera.addEventListener("click", () => {
+        stopCameraStreamOnly();
+        dom.btnStartWorkout.disabled = false;
+        updateCoachFeedback("相機已關閉，影像資源已釋放。", "info", true);
+      });
+
+      // 8. 縮放滑桿與快速倍率按鈕 (1.0x, 1.5x, 2.0x)
+      dom.zoomSlider.addEventListener("input", (e) => {
+        applyCameraZoom(parseFloat(e.target.value));
+      });
+
+      dom.zoomPresetBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const val = parseFloat(btn.getAttribute("data-zoom"));
+          applyCameraZoom(val);
+        });
+      });
+
+      // 9. 廣東話語音開關與重播指示
+      dom.btnToggleVoice.addEventListener("click", () => {
+        state.voiceEnabled = !state.voiceEnabled;
+        if (state.voiceEnabled) {
+          dom.iconVoice.className = "fa-solid fa-volume-high text-xl";
+          dom.txtVoice.textContent = "語音：開啟";
+          speakInstruction("廣東話語音提示已開啟", true);
+        } else {
+          window.speechSynthesis && window.speechSynthesis.cancel();
+          dom.iconVoice.className = "fa-solid fa-volume-xmark text-xl";
+          dom.txtVoice.textContent = "語音：關閉";
+        }
+      });
+
+      dom.btnReplayVoice.addEventListener("click", () => {
+        const ex = EXERCISES[state.currentExerciseIndex];
+        const replayText = state.lastSpokenText || `${ex.name}。${ex.description}`;
+        if (!state.voiceEnabled) {
+          state.voiceEnabled = true;
+          dom.iconVoice.className = "fa-solid fa-volume-high text-xl";
+          dom.txtVoice.textContent = "語音：開啟";
+        }
+        speakInstruction(replayText, true);
+      });
+
+      // 當網頁卸載時自動釋放相機與語音資源
+      window.addEventListener("beforeunload", () => {
+        stopCameraStreamOnly();
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      });
+    }
+
+    /* -------------------------------------------------------------------------
+     * 14. 網頁啟動初始化
+     * ------------------------------------------------------------------------- */
+    function initApp() {
+      initSpeechSynthesis();
+      updateExerciseUI();
+      bindEvents();
+      // 預先在背景載入 MediaPipe 模型，加快長者點擊「開始健步舞」後的反應速度
+      initMediaPipePose();
+    }
+
+    window.addEventListener("DOMContentLoaded", initApp);
+  </script>
+</body>
+</html>
